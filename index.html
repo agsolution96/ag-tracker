@@ -760,6 +760,8 @@ async function loadOrders(){
     loadingEl.style.display = 'block';
     return;
   }
+  const tidyText = v => typeof v === 'string' ? v.replace(/\\[rnt]/g,' ').replace(/[\r\n\t]+/g,' ').replace(/\s{2,}/g,' ').trim() : v;
+  orders.forEach(o => { ['name','address','product','remark','phone','phone2'].forEach(k => { if(typeof o[k] === 'string') o[k] = tidyText(o[k]); }); });
   orders.forEach(o => { if(!o.attempts) o.attempts = []; if(o.reason===undefined) o.reason = ''; if(o.trackingId===undefined) o.trackingId = ''; if(o.courierAttempt===undefined) o.courierAttempt = null; if(o.alertBroken===undefined) o.alertBroken = false; if(o.phone2===undefined) o.phone2 = ''; if(o.price===undefined) o.price = null; if(o.handledByStaff===undefined) o.handledByStaff = false; if(!o.sortAt) o.sortAt = o.updatedAt; });
   loadingEl.style.display = 'none';
   document.getElementById('app').style.display = 'block';
@@ -1379,6 +1381,8 @@ async function doImport(type){
         o.reason = '';
       }
       o.phone = phoneRaw;
+      if(name) o.name = name;
+      if(address) o.address = address;
       if(phone2) o.phone2 = phone2;
       if(product) o.product = product;
       if(trackingId) o.trackingId = trackingId;
