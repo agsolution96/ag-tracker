@@ -1212,21 +1212,22 @@ document.getElementById('copyTrackingBtn').addEventListener('click', () => {
 
 // ---- Excel upload (two courier data flows: failed / rescheduled) ----
 const FIELD_GUESSES = {
-  name: ['customer name','name','customer','client'],
+  name: ['customer name','recipient name','name','customer','client'],
   phone: ['customer phone','phone number','phone','mobile','contact','tel','telephone','number'],
-  phone2: ['second phone number','second phone','alt phone','alternate phone','phone 2','backup phone'],
+  phone2: ['recipient contact number 2','contact number 2','second phone number','second phone','alt phone','alternate phone','phone 2','contact 2','mobile 2','backup phone'],
   product: ['description','product','item'],
-  address: ['delivery address','address','area','city','location','town'],
-  remark: ['remark','note','notes','comment'],
+  address: ['recipient address','delivery address','address','area','city','location','town'],
+  remark: ['client remark','rider remark','admin remark','remark','note','notes','comment'],
   reason: ['reason','status reason','fail reason'],
   trackingId: ['waybill id','waybill no','waybill','tracking id','tracking no','tracking','awb'],
-  courierAttempt: ['delivery attempt','attempt count','no of attempts','attempt','attempts'],
+  courierAttempt: ['delivery attempt','reschedule attempts','attempt count','no of attempts','attempt','attempts'],
   price: ['cod amount','cod value','cod','price','amount','value']
 };
 function guessColumn(headers, field){
   const lower = headers.map(h => String(h).toLowerCase().trim());
   const guesses = FIELD_GUESSES[field];
-  const excludeWords = field === 'phone' ? ['second','alt','alternate','backup','2nd'] : [];
+  const excludeWords = field === 'phone' ? ['second','alt','alternate','backup','2nd','number 2','phone 2','contact 2']
+                     : field === 'address' ? ['pickup'] : [];
   const isExcluded = h => excludeWords.some(x => h.includes(x));
   for(const g of guesses){ const idx = lower.findIndex(h => h === g && !isExcluded(h)); if(idx !== -1) return headers[idx]; }
   for(const g of guesses){ const idx = lower.findIndex(h => h.includes(g) && !isExcluded(h)); if(idx !== -1) return headers[idx]; }
@@ -1241,7 +1242,15 @@ function readOneExcelFile(file){
         const data = new Uint8Array(ev.target.result);
         const wb = XLSX.read(data, {type:'array'});
         const sheet = wb.Sheets[wb.SheetNames[0]];
-        const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+        const rawRows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+        let rows = rawRows;
+        try{
+          // tidy junk like literal \r\n / tabs / double spaces (needed for the API… courier CSV);
+          // if anything goes wrong we silently keep the untouched rows, exactly like before
+          const cleanCell = v => typeof v === 'string' ? v.replace(/\\[rnt]/g,' ').replace(/[\r\n\t]+/g,' ').replace(/\s{2,}/g,' ').trim() : v;
+          const cleaned = rawRows.map(r => { const o = {}; Object.keys(r).forEach(k => { o[k] = cleanCell(r[k]); }); return o; });
+          if(cleaned.length === rawRows.length) rows = cleaned;
+        }catch(cleanErr){ rows = rawRows; }
         resolve(rows);
       }catch(err){ reject(err); }
     };
@@ -1336,12 +1345,14 @@ async function doImport(type){
       phoneRaw = parts[0] || '';
       if(!phone2) phone2 = parts[1] || '';
     }
+    const fixPhone = p => { const d = String(p||'').replace(/[^0-9]/g,''); return d.length === 9 ? '0' + d : String(p||'').trim(); };
+    phoneRaw = fixPhone(phoneRaw); phone2 = fixPhone(phone2);
     const name = String(row[map.name] || '').trim();
     const trackingId = map.trackingId ? String(row[map.trackingId] || '').trim() : '';
     const product = map.product ? String(row[map.product] || '').trim() : '';
     const address = map.address ? String(row[map.address] || '').trim() : '';
     const riderRemark = map.remark ? String(row[map.remark] || '').trim() : '';
-    const cleanRiderRemark = (riderRemark && riderRemark.toUpperCase() !== 'N/A') ? riderRemark : '';
+    const cleanRiderRemark = (riderRemark && riderRemark.toUpperCase() !== 'N/A' && /[A-Za-z\u0D80-\u0DFF]/.test(riderRemark)) ? riderRemark : '';
     const courierAttemptRaw = map.courierAttempt ? row[map.courierAttempt] : '';
     const courierAttempt = courierAttemptRaw !== '' && !isNaN(parseInt(courierAttemptRaw)) ? parseInt(courierAttemptRaw) : null;
     const priceRaw = map.price ? String(row[map.price] || '').replace(/[^0-9.]/g,'') : '';
