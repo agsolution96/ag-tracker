@@ -362,6 +362,17 @@
   .login-card input:focus{border-color:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.25);}
   .login-card .btn{background:#fff;color:#4A3FD0;box-shadow:0 6px 18px rgba(0,0,0,.2);}
   .login-card .btn:hover{background:#F3F0FF;}
+
+  /* ===== AI ask panel ===== */
+  .ask-panel .ask-row{display:flex;gap:8px;flex-wrap:wrap;}
+  .ask-panel .ask-input{flex:1;min-width:220px;padding:11px 14px;border:1px solid var(--line);border-radius:999px;background:var(--surface-soft);color:var(--ink);font-size:14px;font-family:inherit;}
+  .ask-panel .ask-input:focus{outline:none;border-color:var(--navy-light);box-shadow:0 0 0 3px rgba(85,96,232,.18);}
+  .ask-chips{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 0;}
+  .ask-chip{border:1px solid var(--line);background:var(--card);color:var(--ink-soft);border-radius:999px;padding:6px 12px;font-size:12px;cursor:pointer;font-family:inherit;}
+  .ask-chip:hover{border-color:var(--navy-light);color:var(--navy);}
+  .ask-answer{margin-top:12px;padding:12px 14px;border-radius:12px;background:var(--brand-grad-soft);border:1px solid var(--line);font-size:14px;line-height:1.6;white-space:pre-wrap;display:none;}
+  .ask-answer.err{background:var(--red-bg);color:var(--red);}
+  .ask-note{margin-top:8px;font-size:11px;color:var(--ink-soft);}
 </style>
 </head>
 <body>
@@ -2572,6 +2583,112 @@ function attemptLogin(){
 }
 document.getElementById('loginBtn').addEventListener('click', attemptLogin);
 document.getElementById('loginPw').addEventListener('keydown', (e) => { if(e.key === 'Enter') attemptLogin(); });
+
+// ===== AI ask (aggregated numbers only — no names / phones / addresses are ever sent) =====
+let askBackendChecked = false, askBackendOk = false, askBackendMsg = '';
+async function checkAskBackend(){
+  if(askBackendChecked) return askBackendOk;
+  try{
+    const res = await fetch(API_URL + '?pw=' + encodeURIComponent(appPw) + '&type=version');
+    const data = await res.json();
+    if(data && !Array.isArray(data) && data.version >= 13){
+      if(data.ai){ askBackendOk = true; }
+      else { askBackendMsg = 'Apps Script එකේ GEMINI_KEY (Script Properties) set කරලා නෑ.'; }
+    } else {
+      askBackendMsg = 'Apps Script v13 තාම deploy කරලා නෑ (Deploy → Manage deployments → Edit → New version).';
+    }
+  }catch(e){ askBackendMsg = 'Backend එකට සම්බන්ධ වෙන්න බැරි උනා.'; }
+  askBackendChecked = askBackendOk;   // keep re-checking until it works
+  return askBackendOk;
+}
+function topN(obj, n){
+  return Object.fromEntries(Object.entries(obj).sort((a,b) => (b[1].total||0) - (a[1].total||0)).slice(0, n));
+}
+function bump(map, key, field){
+  const k = (key || 'unknown').toString().trim() || 'unknown';
+  if(!map[k]) map[k] = {total:0};
+  map[k].total++;
+  map[k][field] = (map[k][field] || 0) + 1;
+}
+function buildMainStats(){
+  const st = {}, reasons = {}, attempts = {}, products = {}, daily = {};
+  let handled = 0, alertBroken = 0;
+  orders.forEach(o => {
+    st[o.status] = (st[o.status] || 0) + 1;
+    if(o.status === 'failed'){ const r = o.reason || 'no reason yet'; reasons[r] = (reasons[r] || 0) + 1; }
+    const a = (o.courierAttempt === null || o.courierAttempt === undefined || o.courierAttempt === '') ? 'unknown' : String(o.courierAttempt);
+    attempts[a] = (attempts[a] || 0) + 1;
+    bump(products, o.product, o.status || 'unknown');
+    const d = String(o.updatedAt || o.createdAt || '').slice(0, 10);
+    if(d){ if(!daily[d]) daily[d] = {}; daily[d][o.status] = (daily[d][o.status] || 0) + 1; }
+    if(o.handledByStaff) handled++;
+    if(o.alertBroken) alertBroken++;
+  });
+  const days = Object.keys(daily).sort().slice(-14);
+  const dailyLast = {}; days.forEach(d => dailyLast[d] = daily[d]);
+  return {note:'Orders tracker (follow-up list). status values: failed / rescheduled / delivered. daily = by last-updated date.',
+    totalOrders: orders.length, byStatus: st, failedByReason: reasons, byCourierAttemptNumber: attempts,
+    byProduct: topN(products, 25), dailyLast14Days: dailyLast, handledByStaff: handled, confirmedButFailedAgain: alertBroken};
+}
+function buildStatusStats(){
+  const bucketOf = o => o.bucket || (typeof bucketForStatus === 'function' ? bucketForStatus(o.status) : 'transit');
+  const byCourier = {}, products = {}, districts = {}, statusText = {};
+  myStatusOrders.forEach(o => {
+    const b = bucketOf(o), cr = o.courier || 'royal';
+    if(!byCourier[cr]) byCourier[cr] = {total:0};
+    byCourier[cr].total++; byCourier[cr][b] = (byCourier[cr][b] || 0) + 1;
+    bump(products, o.product, b);
+    bump(districts, o.district || o.city, b);
+    const key = cr + ' | ' + (o.status || 'unknown');
+    statusText[key] = (statusText[key] || 0) + 1;
+  });
+  const topStatus = Object.fromEntries(Object.entries(statusText).sort((a,b)=>b[1]-a[1]).slice(0, 25));
+  return {note:'Monthly courier status analytics. buckets: delivered / transit / failed (failed or returned) / rescheduled.',
+    totalParcels: myStatusOrders.length, byCourier, byProduct: topN(products, 20), byDistrict: topN(districts, 15), courierStatusTexts: topStatus};
+}
+async function askAI(scope, question, answerEl, btn){
+  question = (question || '').trim();
+  if(!question) return;
+  answerEl.style.display = 'block'; answerEl.className = 'ask-answer'; answerEl.textContent = 'හිතනවා…';
+  btn.disabled = true;
+  try{
+    if(!(await checkAskBackend())){ answerEl.className = 'ask-answer err'; answerEl.textContent = askBackendMsg; return; }
+    const ctx = JSON.stringify(scope === 'mystatus' ? buildStatusStats() : buildMainStats());
+    const res = await fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({type:'ask', scope, question, context: ctx, pw: appPw})});
+    const data = await res.json();
+    if(data.error){ answerEl.className = 'ask-answer err'; answerEl.textContent = data.error; }
+    else { answerEl.innerHTML = escapeHtml(data.answer).replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>'); }
+  }catch(e){
+    answerEl.className = 'ask-answer err'; answerEl.textContent = 'AI එකට සම්බන්ධ වෙන්න බැරි උනා. Internet check කරලා ආයෙත් try කරන්න.';
+  }finally{ btn.disabled = false; }
+}
+function mountAskPanel(anchor, scope, chips){
+  if(!anchor) return;
+  const panel = document.createElement('div');
+  panel.className = 'panel ask-panel';
+  panel.innerHTML = `
+    <h2><span class="h-ic">${ASK_ICON}</span>Ask my data</h2>
+    <div class="ask-row">
+      <input class="ask-input" type="text" maxlength="300" placeholder="ප්‍රශ්නයක් අහන්න… (උදා: ${escapeHtml(chips[0])})">
+      <button class="btn">Ask</button>
+    </div>
+    <div class="ask-chips">${chips.map(q => `<button type="button" class="ask-chip">${escapeHtml(q)}</button>`).join('')}</div>
+    <div class="ask-answer"></div>
+    <div class="ask-note">AI එකට යන්නේ ගණන් විතරයි — customer නම්, phone, address යන්නේ නෑ.</div>`;
+  anchor.parentNode.insertBefore(panel, anchor);
+  const input = panel.querySelector('.ask-input'), btn = panel.querySelector('.btn'), ans = panel.querySelector('.ask-answer');
+  const go = q => { input.value = q; askAI(scope, q, ans, btn); };
+  btn.addEventListener('click', () => askAI(scope, input.value, ans, btn));
+  input.addEventListener('keydown', e => { if(e.key === 'Enter') askAI(scope, input.value, ans, btn); });
+  panel.querySelectorAll('.ask-chip').forEach(ch => ch.addEventListener('click', () => go(ch.textContent)));
+}
+const ASK_ICON = '<svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z"/></svg>';
+mountAskPanel(document.getElementById('chartWrap') && document.getElementById('chartWrap').closest('.panel'), 'main',
+  ['වැඩිපුරම fail වුණ product එක මොකක්ද?', 'Attempt අනුව orders කීයක් තියෙනවද?', 'Fail වුණ ඒවා reason අනුව බෙදලා කියන්න']);
+mountAskPanel(document.getElementById('resetMyStatusBtn') && document.getElementById('resetMyStatusBtn').closest('.panel'), 'mystatus',
+  ['වැඩිපුරම fail වුණ courier මොකක්ද?', 'Delivered % වැඩිම courier මොකක්ද?', 'වැඩිපුරම fail වෙන district මොනවද?']);
+
 document.getElementById('logoutBtn').addEventListener('click', () => {
   appPw = '';
   try{ localStorage.removeItem('ag-pw'); }catch(e){}
