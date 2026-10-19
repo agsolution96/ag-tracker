@@ -2076,7 +2076,7 @@ async function downloadAllWaybillsPdf(){
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({orientation:'portrait', unit:'mm', format:'a4'});
   const pageW = 210, pageH = 297;
-  const margin = 4, gap = 3;
+  const margin = 9, gap = 3; // 9mm margin so printers don't clip the page edge
   const cols = 3, rows = 2;
   const perPage = cols * rows;
   const cellW = (pageW - margin*2 - gap*(cols-1)) / cols;
@@ -2091,6 +2091,12 @@ async function downloadAllWaybillsPdf(){
       hiddenContainer.innerHTML = buildWaybillLabelHTML(o, canvasId);
       drawWaybillBarcode(canvasId, computeWaybillNo(o));
       const labelEl = hiddenContainer.querySelector('.waybill-label');
+      // equal size for every label (short ones get stretched, long ones grow)
+      labelEl.style.minHeight = '290px';
+      labelEl.style.display = 'flex';
+      labelEl.style.flexDirection = 'column';
+      const bodyEl = labelEl.querySelector('.wl-body-h');
+      if(bodyEl) bodyEl.style.flex = '1';
       const capturedCanvas = await html2canvas(labelEl, {scale:3, backgroundColor:'#ffffff'});
       const canvas = rotateCanvas90(capturedCanvas);
       const imgData = canvas.toDataURL('image/jpeg', 0.9);
