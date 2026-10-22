@@ -385,6 +385,14 @@
   .home-who img{width:26px;height:26px;border-radius:50%;object-fit:cover;border:1.5px solid #fff;}
   .home-clock{display:inline-flex;align-items:center;gap:6px;margin-top:12px;background:#fff;color:#4A3FD0;border:none;border-radius:999px;padding:8px 16px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;}
   .home-clock.done{background:rgba(255,255,255,.2);color:#fff;cursor:default;}
+  .chat-stats{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:12px;}
+  .chat-s{background:var(--bg,#f4f6ff);border:1px solid var(--line);color:inherit;}
+  .chat-s b{display:block;font-size:20px;}
+  .chat-form{display:flex;gap:10px;flex-wrap:wrap;align-items:flex-end;margin-bottom:14px;}
+  .chat-form label{display:flex;flex-direction:column;font-size:11px;color:var(--ink-soft);gap:4px;}
+  .chat-form input{padding:8px 10px;border:1px solid var(--line);border-radius:8px;font-size:14px;width:130px;}
+  .chat-table{width:100%;border-collapse:collapse;font-size:13px;}
+  .chat-table th,.chat-table td{padding:6px 8px;border-bottom:1px solid var(--line);text-align:left;}
   .home-stats{display:flex;gap:10px;flex-wrap:wrap;margin-top:14px;}
   .home-stat{background:rgba(255,255,255,.16);border:1px solid rgba(255,255,255,.28);border-radius:12px;padding:8px 14px;font-size:12px;}
   .home-stat b{display:block;font-size:20px;line-height:1.2;}
@@ -503,6 +511,18 @@
             <div class="att-actions">
               <button class="sbtn" data-action="clockin" data-staff="Induranga Niga">Clock In</button>
               <button class="sbtn" data-action="clockout" data-staff="Induranga Niga">Clock Out</button>
+            </div>
+          </div>
+        </div>
+        <div class="team-card">
+          <img class="team-avatar" src="data:image/svg+xml;base64,PHN2ZyB4bWxucz0naHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmcnIHZpZXdCb3g9JzAgMCAxMDAgMTAwJz48ZGVmcz48bGluZWFyR3JhZGllbnQgaWQ9J2cnIHgxPScwJyB5MT0nMCcgeDI9JzEnIHkyPScxJz48c3RvcCBvZmZzZXQ9JzAnIHN0b3AtY29sb3I9JyMxRTg4RkYnLz48c3RvcCBvZmZzZXQ9Jy41NScgc3RvcC1jb2xvcj0nIzZDNUNGMicvPjxzdG9wIG9mZnNldD0nMScgc3RvcC1jb2xvcj0nI0U5Njk3RScvPjwvbGluZWFyR3JhZGllbnQ+PC9kZWZzPjxyZWN0IHdpZHRoPScxMDAnIGhlaWdodD0nMTAwJyBmaWxsPSd1cmwoI2cpJy8+PHRleHQgeD0nNTAnIHk9JzY0JyBmb250LXNpemU9JzQ2JyBmb250LWZhbWlseT0nQXJpYWwsc2Fucy1zZXJpZicgZm9udC13ZWlnaHQ9JzcwMCcgZmlsbD0nI2ZmZicgdGV4dC1hbmNob3I9J21pZGRsZSc+SDwvdGV4dD48L3N2Zz4=" alt="Himasha">
+          <div>
+            <div class="team-name">Himasha</div>
+            <div class="team-role">WhatsApp &amp; TikTok</div>
+            <div class="att-status" id="att-status-Himasha">—</div>
+            <div class="att-actions">
+              <button class="sbtn" data-action="clockin" data-staff="Himasha">Clock In</button>
+              <button class="sbtn" data-action="clockout" data-staff="Himasha">Clock Out</button>
             </div>
           </div>
         </div>
@@ -918,7 +938,7 @@ function fmtHours(inIso, outIso){
 
 function renderAttendance(){
   // today's status per staff card
-  ['Thejan Rox','Induranga Niga'].forEach(staff => {
+  HOME_STAFF.forEach(staff => {
     const rec = attendance.find(a => a.staffName === staff && a.date === todayStr());
     const el = document.getElementById('att-status-' + staff);
     if(!el) return;
@@ -2634,6 +2654,7 @@ function attemptLogin(){
   loadWaybillOrders();
   loadProducts();
   loadMyStatus();
+  loadChats();
 }
 document.getElementById('loginBtn').addEventListener('click', attemptLogin);
 document.getElementById('loginPw').addEventListener('keydown', (e) => { if(e.key === 'Enter') attemptLogin(); });
@@ -2745,7 +2766,8 @@ mountAskPanel(document.getElementById('resetMyStatusBtn') && document.getElement
 
 
 // ===== Today home screen (smart call list + team progress + greeting) =====
-const HOME_STAFF = ['Thejan Rox', 'Induranga Niga'];
+const HOME_STAFF = ['Thejan Rox', 'Induranga Niga', 'Himasha'];
+const CHAT_STAFF = ['Himasha'];
 const HOME_GROUPS = [
   {key:'alert',    title:'Confirmed but failed again', hint:'Customer confirm කළා, ඒත් ආයෙත් fail වුණා — මුලින්ම call කරන්න.', color:'#E04A5F'},
   {key:'risk',     title:'3rd+ attempt (return වෙන්න ඉඩ)', hint:'Attempts ගොඩක් ගිහින් — customer එක්ක කතා කරලා delivery එක සහතික කරගන්න.', color:'#F0A030'},
@@ -2853,10 +2875,104 @@ function renderHome(){
   if(!list) list = '<div class="home-empty">' + (st.inScope === 0 && homeScope === 'today' && orders.length ? 'අද upload කරපු orders නෑ. උඩින් "සියලුම pending" තෝරලා බලන්න.' : 'Call කරන්න ඉතුරු orders නෑ. 🎉') + '</div>';
   const callList = '<div class="panel"><h2><span class="h-ic">' + IC_PHONE + '</span>අද call කරන්න ඕන</h2>' + list + '</div>';
 
-  el.innerHTML = hero + progress + callList;
+  el.innerHTML = hero + progress + chatPanelHtml() + callList;
   if(st.target > 0 && st.pending === 0 && homeScope === 'today') homeConfetti();
 }
 const IC_PHONE = '<svg class="ic" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1 1 .4 1.9.7 2.8a2 2 0 0 1-.5 2.1L8.1 9.9a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.8.7a2 2 0 0 1 1.7 2z"/></svg>';
+
+// ---- WhatsApp chats log (daily: messages received / confirmed) ----
+let chatLogs = [];
+let chatsReady = false;      // true only when backend answered properly (protects against overwriting)
+let chatsBackendOld = false; // backend not updated to v14
+let chatDraft = null;
+function chatsValid(arr){ return Array.isArray(arr) && arr.every(r => r && typeof r === 'object' && 'staff' in r && 'date' in r && 'messages' in r); }
+async function loadChats(){
+  try{
+    const res = await fetch(API_URL + '?pw=' + encodeURIComponent(appPw) + '&type=chats');
+    if(!res.ok) throw new Error('load failed');
+    const data = await res.json();
+    if(chatsValid(data)){ chatLogs = data; chatsReady = true; chatsBackendOld = false; }
+    else { chatsBackendOld = true; }
+  }catch(e){ console.error('Chats load failed', e); }
+  renderHome();
+}
+async function saveChats(){
+  if(!chatsReady) return false;
+  try{
+    const res = await fetch(API_URL, {method:'POST', headers:{'Content-Type':'text/plain;charset=utf-8'},
+      body: JSON.stringify({type:'chats', chats: chatLogs, pw: appPw})});
+    const j = await res.json();
+    if(!res.ok || !j.success) throw new Error('save failed');
+    return true;
+  }catch(e){
+    console.error('Chats save failed', e);
+    alert('Chats save කරගන්න බැරි උනා - Internet connection එක check කරන්න.');
+    return false;
+  }
+}
+function chatRec(date, staff){ return chatLogs.find(r => r.date === date && r.staff === staff); }
+function chatPct(m, c){ return m > 0 ? Math.round(c / m * 100) + '%' : '—'; }
+function chatDraftGet(){
+  const staff = CHAT_STAFF[0];
+  if(!chatDraft){
+    const rec = chatRec(todayStr(), staff);
+    chatDraft = {date: todayStr(), messages: rec ? rec.messages : '', confirmed: rec ? rec.confirmed : ''};
+  }
+  return chatDraft;
+}
+function chatPanelHtml(){
+  const staff = CHAT_STAFF[0];
+  const d = chatDraftGet();
+  if(chatsBackendOld) return '<div class="panel"><h2><span class="h-ic">' + IC_PHONE + '</span>WhatsApp chats</h2><div class="preview-note">මේ feature එකට Apps Script backend එක v14 වලට update කරන්න ඕන (Code.gs replace කරලා Deploy → New version).</div></div>';
+  const today = chatRec(todayStr(), staff);
+  const tm = today ? Number(today.messages) || 0 : 0, tc = today ? Number(today.confirmed) || 0 : 0;
+  const days = [];
+  for(let i = 0; i < 7; i++){ const dt = new Date(); dt.setDate(dt.getDate() - i); days.push(dt.toLocaleDateString('en-CA')); }
+  const rows = days.map(day => {
+    const r = chatRec(day, staff); const m = r ? Number(r.messages) || 0 : 0, c = r ? Number(r.confirmed) || 0 : 0;
+    return '<tr><td>' + day + '</td><td>' + (r ? m : '—') + '</td><td>' + (r ? c : '—') + '</td><td>' + (r ? chatPct(m, c) : '—') + '</td></tr>';
+  }).join('');
+  const mon = todayStr().slice(0, 7);
+  let mm = 0, mc = 0;
+  chatLogs.forEach(r => { if(r.staff === staff && String(r.date).startsWith(mon)){ mm += Number(r.messages) || 0; mc += Number(r.confirmed) || 0; } });
+  return '<div class="panel"><h2><span class="h-ic">' + IC_PHONE + '</span>WhatsApp chats — ' + escapeHtml(staff) + '</h2>' +
+    '<div class="chat-stats"><div class="home-stat chat-s"><b>' + tm + '</b>අද messages</div><div class="home-stat chat-s"><b>' + tc + '</b>අද confirmed</div>' +
+    '<div class="home-stat chat-s"><b>' + chatPct(tm, tc) + '</b>අද conversion</div></div>' +
+    '<div class="chat-form"><label>Date<input type="date" data-chat-field="date" value="' + escapeHtml(d.date) + '"></label>' +
+    '<label>Messages ආවා<input type="number" min="0" inputmode="numeric" data-chat-field="messages" value="' + escapeHtml(String(d.messages)) + '"></label>' +
+    '<label>Confirm උනා<input type="number" min="0" inputmode="numeric" data-chat-field="confirmed" value="' + escapeHtml(String(d.confirmed)) + '"></label>' +
+    '<button class="btn small" data-chat-save="1"' + (chatsReady ? '' : ' disabled') + '>Save</button></div>' +
+    '<table class="chat-table"><thead><tr><th>දිනය</th><th>Messages</th><th>Confirmed</th><th>%</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<p class="prog-msg">මේ මාසේ: <b>' + mm + '</b> messages · <b>' + mc + '</b> confirmed · <b>' + chatPct(mm, mc) + '</b></p></div>';
+}
+document.getElementById('homeView').addEventListener('input', e => {
+  const f = e.target.getAttribute && e.target.getAttribute('data-chat-field');
+  if(!f) return;
+  chatDraftGet()[f] = e.target.value;
+});
+document.getElementById('homeView').addEventListener('change', e => {
+  if(e.target.getAttribute && e.target.getAttribute('data-chat-field') === 'date'){
+    const rec = chatRec(e.target.value, CHAT_STAFF[0]);
+    chatDraft = {date: e.target.value, messages: rec ? rec.messages : '', confirmed: rec ? rec.confirmed : ''};
+    renderHome();
+  }
+});
+document.getElementById('homeView').addEventListener('click', async e => {
+  const b = e.target.closest('[data-chat-save]');
+  if(!b) return;
+  const d = chatDraftGet(), staff = CHAT_STAFF[0];
+  const m = parseInt(d.messages, 10), c = parseInt(d.confirmed, 10);
+  if(!d.date || isNaN(m) || isNaN(c) || m < 0 || c < 0){ alert('Messages සහ Confirmed අංක දෙකම දාන්න.'); return; }
+  if(c > m && !confirm('Confirmed (' + c + ') messages (' + m + ') වලට වඩා වැඩියි. ඒත් save කරන්නද?')) return;
+  let rec = chatRec(d.date, staff);
+  if(rec){ rec.messages = m; rec.confirmed = c; rec.updatedAt = new Date().toISOString(); }
+  else chatLogs.push({date: d.date, staff: staff, messages: m, confirmed: c, updatedAt: new Date().toISOString()});
+  b.disabled = true;
+  const ok = await saveChats();
+  chatDraft = null;
+  renderHome();
+  if(ok){ const nb = document.querySelector('[data-chat-save]'); if(nb){ nb.textContent = 'Saved ✓'; setTimeout(() => { const x = document.querySelector('[data-chat-save]'); if(x) x.textContent = 'Save'; }, 1500); } }
+});
 
 function homeConfetti(){
   let key = 'ag-confetti-' + todayStr();
@@ -2929,6 +3045,7 @@ if(savedPw){
   loadWaybillOrders();
   loadProducts();
   loadMyStatus();
+  loadChats();
 } else {
   showLogin();
 }
